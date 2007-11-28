@@ -1,0 +1,553 @@
+#!/usr/bin/perl
+
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# (C) Copyright Ticketmaster, Inc. 2007
+#
+
+# ============================================================================
+#
+#  $Id: onall,v 1.17 2007/09/14 19:01:47 phil Exp $
+#
+#  onall v2.10 -- A parallelized system-administration tool.
+#	Written by Rafi Khardalian.
+# 
+#  Usage: onall [OPTIONS] <command>
+#	  onall [OPTIONS] --script <script> [script args]
+# ============================================================================
+
+use strict;
+
+our $ssh	= "ssh";
+our $ssh_add	= "ssh-add";
+our $bash	= "bash";
+our $fping	= 'fping';
+
+our %default = (
+    user	=> 'root',
+    rate	=> 20,
+    timeout	=> 300,
+    delay	=> 0,
+    syslist	=> "-",
+);
+
+# ============================================================================
+
+use POSIX qw(:signal_h :errno_h :sys_wait_h);
+use Socket;
+use Getopt::Std;
+use Term::ReadLine;
+use File::Basename;
+use Getopt::Long;
+use Data::Dumper;
+
+
+our $version	= '2.10';
+
+our $exec_cmd	= '';
+our $children 	= 0;
+our %children	= ();
+
+$| 		= 1;
+$SIG{CHLD} 	= sub { \&reaper };
+
+
+our %opt;
+Getopt::Long::Configure ('bundling');
+Getopt::Long::GetOptions(
+    \%opt,
+    'rate|r=s',
+    'delay|d=s',
+    'timeout|t=s',
+    'user|u=s',
+    'syslist|f=s',
+    'suppress|s=s',
+    'logpath|o=s',
+    'script|e=s',
+    'help|h',
+    'yes|y',
+    'unbuffered|b',
+    'quiet|q',
+    'linenums|l',
+    'ping|p',
+    'ssh_arguments|A=s',
+    'ssh_quiet|Q',
+) or usage();
+
+$opt{rate} = $default{rate}
+    unless (exists $opt{rate} or $opt{rate} =~ m/\d+/);
+$opt{delay} = $default{delay}
+    unless (exists $opt{delay} or $opt{delay} =~ m/\d+/);
+$opt{timeout} = $default{timeout}
+    unless (exists $opt{timeout} or $opt{timeout} =~ m/\d+/);
+$opt{user} = $default{user}
+    unless (exists $opt{user});
+$opt{syslist} = $default{syslist}
+    unless (exists $opt{syslist});
+delete $opt{linenums}
+    if (exists $opt{suppress});
+
+if (exists $opt{help}) { usage('extended'); exit 1; }
+
+our $ssh_args	= "-l $opt{user} -xT " 
+		. '-o "PasswordAuthentication no" ' 
+		. '-o "StrictHostKeyChecking no" ';
+
+if (exists $opt{ssh_quiet}) {
+    $ssh_args   .= '-q ';
+}
+
+if (exists $opt{ssh_arguments}) {
+    $ssh_args   .= $opt{ssh_arguments};
+}
+
+if ( exists $opt{script} )
+{
+    $opt{script_args} = shift @ARGV || "";
+
+    exit_error("ERROR: Specified script does not exist\n", 0)
+	unless (-f $opt{script});
+
+    $exec_cmd = 'TMPFILE="/tmp/onall_script.$$" ; cat - >$TMPFILE ; '
+	         . 'chmod +x $TMPFILE && $TMPFILE ' 
+		 . $opt{script_args} . '; rm $TMPFILE'; 
+}
+elsif (scalar(@ARGV) >= 1)
+{
+    $exec_cmd = join(" ", @ARGV);
+}
+else
+{
+    exit_error("ERROR: Nothing to do. Exiting.\n\n", 1);
+}
+
+exit_error("ERROR: Logpath $opt{logpath} is not a directory\n")
+    if (exists $opt{logpath} and not -d $opt{logpath});
+
+my @tools_to_check = ($ssh, $ssh_add, $bash);
+push(@tools_to_check, $fping) if ($opt{ping});
+
+check_tools(\@tools_to_check) or exit 1;
+check_ssh_keys() or exit 1;
+check_bash($exec_cmd) or exit 1;
+
+our $hostlist = build_hostlist($opt{syslist});
+our $tcount = scalar(keys %{$hostlist->{reachable}});
+our $ucount = scalar(keys %{$hostlist->{unreachable}});
+
+exit_error("ERROR: All specified systems are unreachable.\n", 0)
+    if ($tcount < 1);
+
+
+if (not exists  $opt{quiet})
+{
+    print STDERR "\n" . $tcount . " Target(s):\n\n";
+    print_list(sort values %{$hostlist->{reachable}});
+
+    if ($ucount >= 1)
+    {
+        print STDERR "\n" . $ucount . " Unreachable:\n\n";
+        print_list(sort values %{$hostlist->{unreachable}});
+    }
+
+ 
+    print STDERR "\nThe following command will be executed:\n\t";
+    print STDERR (exists $opt{script}) ? "Script: $opt{script}" : $exec_cmd, "\n";
+
+    if (not exists $opt{yes}) 
+    {
+        my $term = new Term::ReadLine '';
+        my $prompt = "";
+
+        while (not $prompt =~ m/^\s*[y|n]/i)
+        {
+            $prompt = $term->readline('Continue (Y/N):');
+        }
+
+        if ($prompt =~ m/^n/i)
+        {
+            print "\nUser aborted. Exiting.\n";
+            exit 1
+        }
+    }
+
+    print "\n";
+}
+
+
+
+for my $machine (sort keys %{$hostlist->{reachable}})
+{
+    chomp $machine;
+
+    while ($children >= $opt{rate}) 
+    {
+        &reaper;
+        select(undef, undef, undef, 0.25);
+    }
+
+    $children++;	
+
+    defined(my $pid = fork) or 
+        die "Cannot fork: $!";
+
+    $children{$pid} = 1;
+
+    if (not $pid) 
+    {
+	new_ssh_child($machine);
+    }
+
+    &reaper;
+}
+
+
+while (wait > -1) { &reaper; select(undef, undef, undef, 0.25); }
+print "\n" unless (exists $opt{quiet});
+
+
+# ============================================================================
+
+sub new_ssh_child
+{
+    my $machine = shift;
+    my ($hostname, @pids, @output);
+    my $linecounter = 0;
+
+    $hostname = $hostlist->{reachable}->{$machine};
+
+    $SIG{ALRM} = sub 
+    { 
+        print STDERR "$hostname: Timeout exceeded \[$opt{timeout}\] -- ";
+        print STDERR "killing \(" . join(" ", @pids) . "\).\n";
+
+        for (@pids) { kill KILL => $_; }
+	sleep $opt{delay};
+        exit; 
+    };
+
+    alarm($opt{timeout});
+    $ssh = "cat $opt{script} | " . $ssh
+	if (exists $opt{'script'});
+    @pids = open(SSH, "$ssh $ssh_args $machine \'($exec_cmd) 2>&1\' 2>&1 |")
+        or die "Cannot fork ssh: $!";
+
+    open(LOGFILE, ">$opt{logpath}/$hostname")
+        if (exists $opt{logpath});
+
+    while (<SSH>)
+    {
+        chomp $_;
+        $linecounter++;
+
+        my $rline = ((exists $opt{suppress}) ? "" : "$hostname")
+                  . ((exists $opt{linenums}) ? "\[$linecounter\]" : "")
+                  . ((exists $opt{suppress}) ? "" : ": ")
+                  . "$_\n";
+
+        if ( (exists $opt{unbuffered}) and (not exists $opt{logpath}) )
+        {
+            print $rline;
+        }
+        elsif (exists $opt{logpath})
+        {
+            print LOGFILE "$_\n";
+        }
+        else
+        {
+            push(@output, $rline);
+        }
+    }
+
+    print @output unless exists $opt{unbuffered};
+    close(LOGFILE)
+        if (exists $opt{logpath});
+
+    close(SSH);
+    alarm(0);
+
+    sleep $opt{delay};
+    exit;
+}
+
+
+sub reaper 
+{
+    my $pid;
+    $SIG{CHLD} = sub { \&reaper };
+    $pid = waitpid(-1, &WNOHANG);
+
+    if (WIFEXITED($?)) 
+    {
+        $children--;
+        delete $children{$pid};
+    }
+}
+
+
+sub resolve_address
+{
+    my $address = shift; 
+    my $hostname = gethostbyaddr(inet_aton($address), AF_INET);
+
+    return $hostname if ($hostname) ;
+    return $address;
+}
+
+
+sub build_hostlist
+{
+    my $syslist = shift;
+    my %hostlist;
+
+    open(SYSLIST, "<$opt{syslist}") 
+        or die "Cannot open syslist: $!";
+
+    while (<SYSLIST>)
+    {
+        chomp;
+        if (not m/^\s*#/)
+        {
+	    $hostlist{reachable}{$_} = resolve_address($1)
+		if (m/^(\d+\.\d+\.\d+\.\d+)/);
+
+	    $hostlist{reachable}{$_} = $1
+		if (m/^(\S+)/);	
+	}
+        else
+        {
+            next;
+        }
+    }
+
+    if (exists $opt{ping})
+    {
+        print "Pinging " . scalar(keys %{$hostlist{reachable}})
+	    . " hosts ...\n" unless (exists $opt{quiet});
+
+	my @fping_results;
+        my @fping_targets = keys %{$hostlist{reachable}};
+	while(@fping_targets)
+	{
+	    my @hosts = splice(@fping_targets, 0, 200);
+	    open(FPING, '-|', "$fping @hosts");
+	    push(@fping_results, <FPING>);
+	    close(FPING);
+	}
+	
+	chomp(@fping_results);
+        for my $result (@fping_results)
+        {
+	    my ($host, $state) = ($result =~ /(\S+)\s+is\s+(\S+)/);
+	    if ($state =~ /unreachable/)
+	    {
+		$hostlist{unreachable}{$host} = $hostlist{reachable}{$host};
+		delete $hostlist{reachable}{$host};
+	    }
+	}
+    }
+
+    close(SYSLIST);
+    return \%hostlist;
+}
+
+
+sub check_ssh_keys
+{
+    my $keys = `$ssh_add -l 2>&1`;
+
+    unless ($? == 0)
+    {
+	print STDERR "ERROR: No ssh keys loaded.\n";
+	return 0;
+    }
+    return 1;
+}
+
+
+sub check_bash
+{
+    my $exec_cmd = shift;
+    my @test_syntax = `$bash -nc \'$exec_cmd\' 2>&1`;
+
+    if ($? == 0)
+    {
+	return 1;
+    }
+    else
+    {	
+        usage();
+        print STDERR "ERROR: Invalid bash syntax:\n";
+        for (@test_syntax)
+        {
+            chomp;
+            print STDERR "\t$_\n";
+	}
+
+	return 0;
+    }
+}
+
+
+sub print_list
+{
+    my @array_copy = @_;
+
+    while (@array_copy)
+    {
+        my @line = splice(@array_copy, 0, 2);
+        printf STDERR "%-35s" x @line . "\n", @line;
+    }
+}
+
+
+sub check_tools
+{
+    my $tools = shift;
+    my @path = split(/:/, $ENV{PATH});
+
+    for my $tool (@$tools)
+    {
+        my $found = 0;
+        for my $dir (@path)
+        {
+            if ( (-f "${dir}/${tool}") and (-x "${dir}/${tool}") )
+            {
+                $found = 1;
+                last;
+            }
+        }
+
+        unless ($found == 1)
+        {
+	    print STDERR "ERROR: Could not find required tool $tool. "
+			. "Make sure it is available in your PATH.\n";
+	    return 0;
+	}
+    }
+    return 1;
+}
+
+
+sub exit_error
+{
+    my $msg = shift;
+    my $show_usage = shift;
+
+    usage() if ($show_usage);
+    print STDERR "$msg";
+    exit 1;
+}
+
+sub usage
+{
+    my $extended = shift;
+    my $progname = basename($0);
+
+    print STDERR (<<EOF);
+
+onall v${version} -- A parallelized system-administration tool.
+Usage: onall [OPTIONS] <command> or onall [OPTIONS] --script <script>
+
+EOF
+    if ($extended) 
+    {
+	print STDERR (<<EOF);
+    -r, --rate
+               	Run command on N machines in parallel.  This is 
+		the number of ssh connections open at a given time.
+		Default is 20.
+
+    -d, --delay
+                Delay N seconds between the fork of each ssh
+		child process.  Default is 0.
+
+    -t, --timeout
+             	Timeout in seconds before child ssh processes
+		are killed.  Be careful with this arguement, as
+		all running/pending commands on the machine in
+		question will be terminated potentially leaving
+		the system in an unknown state.  Default is 300.
+
+    -f, --syslist
+             	Path to system list file.  If unspecified, the
+		list will be read from STDIN.  Expected input
+		format is hostname/IP, followed by newline.
+
+    -u, --user
+                Specifies the username ssh will use to log in 
+		to remote systems.  Default is root.
+
+    -o, --logpath
+                Output results to files named by the hostname
+                named by dir/hostname.
+
+    -e, --script
+      		Transfer/execute a script from the local system
+		to each target system.  In this mode the <command>
+		should be a path to a local script.  Any arguments
+		which follow will be passed to the remote script.
+
+    -l, --linenums
+      		Append line numbers to command generated output.
+	
+    -b, --unbuffered
+      		Turn OFF output buffering of result data.  By
+		default, onall will display all output after 
+		remote command execution is complete, thereby 
+		maintaining proper order.  When buffering is
+		off, result data will be returned as each
+		line is received. 
+
+    -p, --ping
+      		Fping all hosts prior to attempting an
+		ssh connection.
+
+    -s, --suppress
+      		Supress hostnames and line numbers from being
+		prepended to result data.
+
+    -q, --quiet
+       		Semi-quiet mode.  Supresses sanity check 
+		information and assumes YES to all prompts. 
+
+    -y, --yes
+      		Assume YES for all prompts.
+
+    -h, --help
+      		Extended help (this screen).
+
+    -A, --ssh_arguments
+		pass arguments directly to ssh
+
+    -Q, --ssh_quiet
+		run ssh in quiet mode
+
+Examples:
+
+    onall -f lax1.list -r50 -t30 'grep fls1 /etc/fstab | wc -l'
+    cat lax1app.list | onall -r20 '/etc/init.d/httpd-* stop'
+    nhs -cluster lax1 -class pxy | onall -r12 -t30 'df ; vmstat'
+    nhs -class vrt -cluster adm2 | onall -e ~user/scripts/do_stuff --now
+  
+Notes:
+
+    Command syntax is expected to be written in bash.  Syntax will be verified
+    prior to forking any ssh children.  It is usually best to enclose the
+    command in 'single quotes', or insert shell escapes where nessessary. SSH 
+    keys must be loaded via ssh-agent/ssh-add prior to running onall.
+
+EOF
+    }
+}
