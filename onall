@@ -1,5 +1,8 @@
 #!/usr/bin/perl
 
+# -*- mode: cperl; cperl-continued-brace-offset: -4; indent-tabs-mode: nil; -*-
+# vim:shiftwidth=2:tabstop=8:expandtab:textwidth=78:softtabstop=4:ai:
+
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,9 +32,9 @@
 
 use strict;
 
-our $ssh	= "ssh";
-our $ssh_add	= "ssh-add";
-our $bash	= "bash";
+our $ssh	= 'ssh';
+our $ssh_add	= 'ssh-add';
+our $bash	= 'bash';
 our $fping	= 'fping';
 
 our %default = (
@@ -39,7 +42,7 @@ our %default = (
     rate	=> 20,
     timeout	=> 300,
     delay	=> 0,
-    syslist	=> "-",
+    syslist	=> '-',
 );
 
 # ============================================================================
@@ -53,7 +56,7 @@ use Getopt::Long;
 use Data::Dumper;
 
 
-our $version	= '2.10';
+our $version	= '2.11';
 
 our $exec_cmd	= '';
 our $children 	= 0;
@@ -114,7 +117,7 @@ if (exists $opt{ssh_arguments}) {
 
 if ( exists $opt{script} )
 {
-    $opt{script_args} = shift @ARGV || "";
+    $opt{script_args} = shift @ARGV || '';
 
     exit_error("ERROR: Specified script does not exist\n", 0)
 	unless (-f $opt{script});
@@ -230,7 +233,7 @@ sub new_ssh_child
     $SIG{ALRM} = sub 
     { 
         print STDERR "$hostname: Timeout exceeded \[$opt{timeout}\] -- ";
-        print STDERR "killing \(" . join(" ", @pids) . "\).\n";
+        print STDERR 'killing \(' . join(' ', @pids) . "\).\n";
 
         for (@pids) { kill KILL => $_; }
 	sleep $opt{delay};
@@ -251,9 +254,9 @@ sub new_ssh_child
         chomp $_;
         $linecounter++;
 
-        my $rline = ((exists $opt{suppress}) ? "" : "$hostname")
-                  . ((exists $opt{linenums}) ? "\[$linecounter\]" : "")
-                  . ((exists $opt{suppress}) ? "" : ": ")
+        my $rline = ((exists $opt{suppress}) ? '' : "$hostname")
+                  . ((exists $opt{linenums}) ? "\[$linecounter\]" : '')
+                  . ((exists $opt{suppress}) ? '' : ': ')
                   . "$_\n";
 
         if ( (exists $opt{unbuffered}) and (not exists $opt{logpath}) )
@@ -314,26 +317,34 @@ sub build_hostlist
     open(SYSLIST, "<$opt{syslist}") 
         or die "Cannot open syslist: $!";
 
-    while (<SYSLIST>)
+    foreach my $line (<SYSLIST>)
     {
-        chomp;
-        if (not m/^\s*#/)
-        {
-	    $hostlist{reachable}{$_} = resolve_address($1)
-		if (m/^(\d+\.\d+\.\d+\.\d+)/);
+        chomp $line;
+        my @list = split(/\s+/,$line);
 
-	    $hostlist{reachable}{$_} = $1
-		if (m/^(\S+)/);	
-	}
-        else
+        foreach my $host (@list)
         {
-            next;
+            unless ($host =~ m/^\s*#/)
+            {
+                if ($host =~ m/^(\d+\.\d+\.\d+\.\d+)/)
+		{
+                    $hostlist{reachable}{$host} = resolve_address($1);
+                }
+                else
+                {
+                    $hostlist{reachable}{$host} = $host;
+                }
+            }
+            else
+            {
+                next;
+            }
         }
     }
 
     if (exists $opt{ping})
     {
-        print "Pinging " . scalar(keys %{$hostlist{reachable}})
+        print 'Pinging ' . scalar(keys %{$hostlist{reachable}})
 	    . " hosts ...\n" unless (exists $opt{quiet});
 
 	my @fping_results;
