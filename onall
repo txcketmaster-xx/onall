@@ -549,8 +549,10 @@ Examples:
 
     onall -f lax1.list -r50 -t30 'grep fls1 /etc/fstab | wc -l'
     cat lax1app.list | onall -r20 '/etc/init.d/httpd-* stop'
-    nhs -cluster lax1 -class pxy | onall -r12 -t30 'df ; vmstat'
-    nhs -class vrt -cluster adm2 | onall -e ~user/scripts/do_stuff --now
+    <tool that generates list of hosts based on options> | \
+        onall -r 12 -t30 'df; vmstat'
+    <tool that generates list of hosts based on options> | \
+        | onall -e ~user/scripts/do_stuff --now
   
 Notes:
 
