@@ -153,7 +153,7 @@ exit_error("ERROR: All specified systems are unreachable.\n", 0)
     if ($tcount < 1);
 
 
-if (not exists  $opt{quiet})
+unless (exists $opt{quiet})
 {
     print STDERR "\n" . $tcount . " Target(s):\n\n";
     print_list(sort values %{$hostlist->{reachable}});
@@ -171,14 +171,14 @@ if (not exists  $opt{quiet})
     if (not exists $opt{yes}) 
     {
         my $term = new Term::ReadLine '';
-        my $prompt = "";
+        my $prompt = '';
 
         while (not $prompt =~ m/^\s*[y|n]/i)
         {
             $prompt = $term->readline('Continue (Y/N):');
         }
 
-        if ($prompt =~ m/^n/i)
+        unless ($prompt =~ m/^y/i)
         {
             print "\nUser aborted. Exiting.\n";
             exit 1
@@ -187,7 +187,6 @@ if (not exists  $opt{quiet})
 
     print "\n";
 }
-
 
 
 for my $machine (sort keys %{$hostlist->{reachable}})
@@ -216,7 +215,11 @@ for my $machine (sort keys %{$hostlist->{reachable}})
 }
 
 
-while (wait > -1) { &reaper; select(undef, undef, undef, 0.25); }
+while (wait > -1) {
+    &reaper;
+    select(undef, undef, undef, 0.25);
+}
+
 print "\n" unless (exists $opt{quiet});
 
 
@@ -349,7 +352,7 @@ sub build_hostlist
 
 	my @fping_results;
         my @fping_targets = keys %{$hostlist{reachable}};
-	while(@fping_targets)
+	while (@fping_targets)
 	{
 	    my @hosts = splice(@fping_targets, 0, 200);
 	    open(FPING, '-|', "$fping @hosts");
