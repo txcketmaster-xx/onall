@@ -27,7 +27,8 @@
 #	Written by Rafi Khardalian.
 # 
 #  Usage: onall [OPTIONS] <command>
-#	  onall [OPTIONS] --script <script> [script args]
+#	  onall [OPTIONS] --script <script> [<script_args>]
+#	  onall [OPTIONS] --copy <file> <dest_path>
 # ============================================================================
 
 use strict;
@@ -86,6 +87,7 @@ Getopt::Long::GetOptions(
     'ping|p',
     'ssh_arguments|A=s',
     'ssh_quiet|Q',
+    'copy|c=s',
 ) or usage();
 
 $opt{rate} = $default{rate}
@@ -125,6 +127,17 @@ if ( exists $opt{script} )
     $exec_cmd = 'TMPFILE="/tmp/onall_script.$$" ; cat - >$TMPFILE ; '
 	         . 'chmod +x $TMPFILE && $TMPFILE ' 
 		 . $opt{script_args} . '; rm $TMPFILE'; 
+}
+elsif ( exists $opt{copy} )
+{
+    $opt{dest} = shift @ARGV || $opt{copy};
+
+    exit_error("ERROR: Specified file does not exist\n", 0)
+        unless (-f $opt{copy});
+
+    $exec_cmd = 'FILE="' . $opt{dest} . '" ; if [ -d $FILE ]; then '
+                 . 'FILE="' . $opt{dest} . '/' . basename($opt{copy})
+                 . '"; fi; cat - >$FILE ; chmod +x $FILE';
 }
 elsif (scalar(@ARGV) >= 1)
 {
@@ -166,7 +179,13 @@ unless (exists $opt{quiet})
 
  
     print STDERR "\nThe following command will be executed:\n\t";
-    print STDERR (exists $opt{script}) ? "Script: $opt{script}" : $exec_cmd, "\n";
+    if (exists $opt{script}) {
+        print STDERR "Script: $opt{script}\n";
+    } elsif (exists $opt{copy}) {
+        print STDERR "Copy: $opt{copy} --> $opt{dest}\n";
+    } else {
+        print STDERR $exec_cmd, "\n";
+    }
 
     if (not exists $opt{yes}) 
     {
@@ -245,7 +264,9 @@ sub new_ssh_child
 
     alarm($opt{timeout});
     $ssh = "cat $opt{script} | " . $ssh
-	if (exists $opt{'script'});
+	if (exists $opt{script});
+    $ssh = "cat $opt{copy} | " . $ssh
+        if (exists $opt{copy});
     @pids = open(SSH, "$ssh $ssh_args $machine \'($exec_cmd) 2>&1\' 2>&1 |")
         or die "Cannot fork ssh: $!";
 
@@ -472,7 +493,9 @@ sub usage
     print STDERR (<<EOF);
 
 onall v${version} -- A parallelized system-administration tool.
-Usage: onall [OPTIONS] <command> or onall [OPTIONS] --script <script>
+Usage: onall [<options>] <command>
+       onall [<options>] --script <script> <script_args>
+       onall [<options>] --copy <file> <dest_path>
 
 EOF
     if ($extended) 
@@ -507,7 +530,7 @@ EOF
                 Output results to files named by the hostname
                 named by dir/hostname.
 
-    -e, --script
+    -e, --script <script> [<script_args>]
       		Transfer/execute a script from the local system
 		to each target system.  In this mode the <command>
 		should be a path to a local script.  Any arguments
@@ -548,6 +571,11 @@ EOF
     -Q, --ssh_quiet
 		run ssh in quiet mode
 
+    -c, --copy <file> [<dest_path>]
+                Copy <file> to destination as <dest_path>. If not specified,
+                <dest_path> will be same as <file>.
+                
+
 Examples:
 
     onall -f lax1.list -r50 -t30 'grep fls1 /etc/fstab | wc -l'
@@ -567,3 +595,4 @@ Notes:
 EOF
     }
 }
+
