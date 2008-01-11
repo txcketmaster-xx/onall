@@ -71,23 +71,23 @@ our %opt;
 Getopt::Long::Configure ('bundling');
 Getopt::Long::GetOptions(
     \%opt,
-    'rate|r=s',
+    'copy|c=s',
     'delay|d=s',
-    'timeout|t=s',
-    'user|u=s',
-    'syslist|f=s',
-    'suppress|s=s',
-    'logpath|o=s',
-    'script|e=s',
     'help|h',
-    'yes|y',
-    'unbuffered|b',
-    'quiet|q',
     'linenums|l',
+    'logpath|o=s',
     'ping|p',
+    'quiet|q',
+    'rate|r=s',
+    'script|e=s',
     'ssh_arguments|A=s',
     'ssh_quiet|Q',
-    'copy|c=s',
+    'suppress|s=s',
+    'syslist|f=s',
+    'timeout|t=s',
+    'unbuffered|b',
+    'user|u=s',
+    'yes|y',
 ) or usage();
 
 $opt{rate} = $default{rate}
@@ -501,14 +501,57 @@ EOF
     if ($extended) 
     {
 	print STDERR (<<EOF);
+    -c, --copy <file> [<dest_path>]
+                Copy <file> to destination as <dest_path>. If not specified,
+                <dest_path> will be same as <file>.
+                
+    -d, --delay
+                Delay N seconds between the fork of each ssh
+		child process.  Default is 0.
+
+    -h, --help
+      		Extended help (this screen).
+
+    -l, --linenums
+      		Append line numbers to command generated output.
+	
+    -o, --logpath
+                Output results to files named by the hostname
+                named by dir/hostname.
+
+    -p, --ping
+      		Fping all hosts prior to attempting an
+		ssh connection.
+
+    -q, --quiet
+       		Semi-quiet mode.  Supresses sanity check 
+		information and assumes YES to all prompts. 
+
     -r, --rate
                	Run command on N machines in parallel.  This is 
 		the number of ssh connections open at a given time.
 		Default is 20.
 
-    -d, --delay
-                Delay N seconds between the fork of each ssh
-		child process.  Default is 0.
+    -e, --script <script> [<script_args>]
+      		Transfer/execute a script from the local system
+		to each target system.  In this mode the <command>
+		should be a path to a local script.  Any arguments
+		which follow will be passed to the remote script.
+
+    -A, --ssh_arguments
+		pass arguments directly to ssh
+
+    -Q, --ssh_quiet
+		run ssh in quiet mode
+
+    -s, --suppress
+      		Supress hostnames and line numbers from being
+		prepended to result data.
+
+    -f, --syslist
+             	Path to system list file.  If unspecified, the
+		list will be read from STDIN.  Expected input
+		format is hostname/IP, followed by newline.
 
     -t, --timeout
              	Timeout in seconds before child ssh processes
@@ -517,28 +560,6 @@ EOF
 		question will be terminated potentially leaving
 		the system in an unknown state.  Default is 300.
 
-    -f, --syslist
-             	Path to system list file.  If unspecified, the
-		list will be read from STDIN.  Expected input
-		format is hostname/IP, followed by newline.
-
-    -u, --user
-                Specifies the username ssh will use to log in 
-		to remote systems.  Default is root.
-
-    -o, --logpath
-                Output results to files named by the hostname
-                named by dir/hostname.
-
-    -e, --script <script> [<script_args>]
-      		Transfer/execute a script from the local system
-		to each target system.  In this mode the <command>
-		should be a path to a local script.  Any arguments
-		which follow will be passed to the remote script.
-
-    -l, --linenums
-      		Append line numbers to command generated output.
-	
     -b, --unbuffered
       		Turn OFF output buffering of result data.  By
 		default, onall will display all output after 
@@ -547,34 +568,13 @@ EOF
 		off, result data will be returned as each
 		line is received. 
 
-    -p, --ping
-      		Fping all hosts prior to attempting an
-		ssh connection.
-
-    -s, --suppress
-      		Supress hostnames and line numbers from being
-		prepended to result data.
-
-    -q, --quiet
-       		Semi-quiet mode.  Supresses sanity check 
-		information and assumes YES to all prompts. 
+    -u, --user
+                Specifies the username ssh will use to log in 
+	        to remote systems.  Default is root.
 
     -y, --yes
       		Assume YES for all prompts.
 
-    -h, --help
-      		Extended help (this screen).
-
-    -A, --ssh_arguments
-		pass arguments directly to ssh
-
-    -Q, --ssh_quiet
-		run ssh in quiet mode
-
-    -c, --copy <file> [<dest_path>]
-                Copy <file> to destination as <dest_path>. If not specified,
-                <dest_path> will be same as <file>.
-                
 
 Examples:
 
@@ -584,6 +584,8 @@ Examples:
         onall -r 12 -t30 'df; vmstat'
     <tool that generates list of hosts based on options> | \
         | onall -e ~user/scripts/do_stuff --now
+    <tool that generates list of hosts based on options> | \
+        | onall -c ~bin/coolutil /usr/bin/coolutil
   
 Notes:
 
