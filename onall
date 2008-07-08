@@ -23,7 +23,7 @@
 #
 #  $Id$
 #
-#  onall v2.10 -- A parallelized system-administration tool.
+#  onall v2.11 -- A parallelized system-administration tool.
 #	Written by Rafi Khardalian.
 # 
 #  Usage: onall [OPTIONS] <command>
@@ -578,8 +578,8 @@ EOF
 
 Examples:
 
-    onall -f lax1.list -r50 -t30 'grep fls1 /etc/fstab | wc -l'
-    cat lax1app.list | onall -r20 '/etc/init.d/httpd-* stop'
+    onall -f cluster1.list -r50 -t30 'grep fls1 /etc/fstab | wc -l'
+    cat cluster1web.list | onall -r20 '/etc/init.d/httpd-* stop'
     <tool that generates list of hosts based on options> | \
         onall -r 12 -t30 'df; vmstat'
     <tool that generates list of hosts based on options> | \

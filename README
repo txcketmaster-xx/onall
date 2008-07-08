@@ -1,0 +1,11 @@
+onall -- A parallelized system-administration tool.
+
+Usage: onall [<options>] <command>
+       onall [<options>] --script <script> <script_args>
+       onall [<options>] --copy <file> <dest_path>
+       onall --help
+
+See the --help option for details on all the options.
+
+http://onall.googlecode.com/
+
