@@ -24,26 +24,26 @@
 #  $Id$
 #
 #  onall v2.11 -- A parallelized system-administration tool.
-#	Written by Rafi Khardalian.
+#    Written by Rafi Khardalian.
 # 
 #  Usage: onall [OPTIONS] <command>
-#	  onall [OPTIONS] --script <script> [<script_args>]
-#	  onall [OPTIONS] --copy <file> <dest_path>
+#      onall [OPTIONS] --script <script> [<script_args>]
+#      onall [OPTIONS] --copy <file> <dest_path>
 # ============================================================================
 
 use strict;
 
-our $ssh	= 'ssh';
-our $ssh_add	= 'ssh-add';
-our $bash	= 'bash';
-our $fping	= 'fping';
+our $ssh = 'ssh';
+our $ssh_add = 'ssh-add';
+our $bash = 'bash';
+our $fping = 'fping';
 
 our %default = (
-    user	=> 'root',
-    rate	=> 20,
-    timeout	=> 300,
-    delay	=> 0,
-    syslist	=> '-',
+    user        => 'root',
+    rate        => 20,
+    timeout     => 300,
+    delay       => 0,
+    syslist     => '-',
 );
 
 # ============================================================================
@@ -57,14 +57,13 @@ use Getopt::Long;
 use Data::Dumper;
 
 
-our $version	= '2.11';
+our $version = '2.11';
+our $exec_cmd = '';
+our $children = 0;
+our %children = ();
 
-our $exec_cmd	= '';
-our $children 	= 0;
-our %children	= ();
-
-$| 		= 1;
-$SIG{CHLD} 	= sub { \&reaper };
+$| = 1;
+$SIG{CHLD} = sub { \&reaper };
 
 
 our %opt;
@@ -76,11 +75,13 @@ Getopt::Long::GetOptions(
     'help|h',
     'linenums|l',
     'logpath|o=s',
+    'no_syntax_check|n',
     'ping|p',
     'quiet|q',
     'rate|r=s',
     'script|e=s',
     'ssh_arguments|A=s',
+    'ssh_no_keys|k',
     'ssh_quiet|Q',
     'suppress|s=s',
     'syslist|f=s',
@@ -105,16 +106,16 @@ delete $opt{linenums}
 
 if (exists $opt{help}) { usage('extended'); exit 1; }
 
-our $ssh_args	= "-l $opt{user} -xT " 
-		. '-o "PasswordAuthentication no" ' 
-		. '-o "StrictHostKeyChecking no" ';
+our $ssh_args = "-l $opt{user} -xT " 
+                . '-o "PasswordAuthentication no" ' 
+                . '-o "StrictHostKeyChecking no" ';
 
 if (exists $opt{ssh_quiet}) {
-    $ssh_args   .= '-q ';
+    $ssh_args .= '-q ';
 }
 
 if (exists $opt{ssh_arguments}) {
-    $ssh_args   .= $opt{ssh_arguments};
+    $ssh_args .= $opt{ssh_arguments};
 }
 
 if ( exists $opt{script} )
@@ -122,11 +123,11 @@ if ( exists $opt{script} )
     $opt{script_args} = shift @ARGV || '';
 
     exit_error("ERROR: Specified script does not exist\n", 0)
-	unless (-f $opt{script});
+    unless (-f $opt{script});
 
     $exec_cmd = 'TMPFILE="/tmp/onall_script.$$" ; cat - >$TMPFILE ; '
-	         . 'chmod +x $TMPFILE && $TMPFILE ' 
-		 . $opt{script_args} . '; rm $TMPFILE'; 
+                . 'chmod +x $TMPFILE && $TMPFILE ' 
+                . $opt{script_args} . '; rm $TMPFILE'; 
 }
 elsif ( exists $opt{copy} )
 {
@@ -153,10 +154,16 @@ exit_error("ERROR: Logpath $opt{logpath} is not a directory\n")
 
 my @tools_to_check = ($ssh, $ssh_add, $bash);
 push(@tools_to_check, $fping) if ($opt{ping});
+@tools_to_check = grep({ $_ ne $ssh_add } @tools_to_check) if ($opt{'ssh_no_keys'});
+@tools_to_check = grep({ $_ ne $bash } @tools_to_check) if ($opt{'no_syntax_check'});
 
 check_tools(\@tools_to_check) or exit 1;
-check_ssh_keys() or exit 1;
-check_bash($exec_cmd) or exit 1;
+unless ($opt{'ssh_no_keys'}) {
+    check_ssh_keys() or exit 1;
+}
+unless ($opt{'no_syntax_check'}) {
+    check_bash($exec_cmd) or exit 1;
+}
 
 our $hostlist = build_hostlist($opt{syslist});
 our $tcount = scalar(keys %{$hostlist->{reachable}});
@@ -218,7 +225,7 @@ for my $machine (sort keys %{$hostlist->{reachable}})
         select(undef, undef, undef, 0.25);
     }
 
-    $children++;	
+    $children++;    
 
     defined(my $pid = fork) or 
         die "Cannot fork: $!";
@@ -227,7 +234,7 @@ for my $machine (sort keys %{$hostlist->{reachable}})
 
     if (not $pid) 
     {
-	new_ssh_child($machine);
+        new_ssh_child($machine);
     }
 
     &reaper;
@@ -258,13 +265,13 @@ sub new_ssh_child
         print STDERR 'killing \(' . join(' ', @pids) . "\).\n";
 
         for (@pids) { kill KILL => $_; }
-	sleep $opt{delay};
+        sleep $opt{delay};
         exit; 
     };
 
     alarm($opt{timeout});
     $ssh = "cat $opt{script} | " . $ssh
-	if (exists $opt{script});
+        if (exists $opt{script});
     $ssh = "cat $opt{copy} | " . $ssh
         if (exists $opt{copy});
     @pids = open(SSH, "$ssh $ssh_args $machine \'($exec_cmd) 2>&1\' 2>&1 |")
@@ -348,52 +355,52 @@ sub build_hostlist
 
         foreach my $host (@list)
         {
-            unless ($host =~ m/^\s*#/)
+            next if ($host =~ m/^\s*#/);
+
+            if ($host =~ m/^(\d+\.\d+\.\d+\.\d+)/)
             {
-                if ($host =~ m/^(\d+\.\d+\.\d+\.\d+)/)
-		{
-                    $hostlist{reachable}{$host} = resolve_address($1);
-                }
-                else
-                {
-                    $hostlist{reachable}{$host} = $host;
-                }
+                $hostlist{unreachable}{$host} = resolve_address($1);
             }
             else
             {
-                next;
+                $hostlist{unreachable}{$host} = $host;
             }
         }
     }
+    close(SYSLIST);
 
     if (exists $opt{ping})
     {
-        print 'Pinging ' . scalar(keys %{$hostlist{reachable}})
-	    . " hosts ...\n" unless (exists $opt{quiet});
+        print 'Pinging ' . scalar(keys %{$hostlist{unreachable}})
+              . " hosts ...\n" unless (exists $opt{quiet});
 
-	my @fping_results;
-        my @fping_targets = keys %{$hostlist{reachable}};
-	while (@fping_targets)
-	{
-	    my @hosts = splice(@fping_targets, 0, 200);
-	    open(FPING, '-|', "$fping @hosts");
-	    push(@fping_results, <FPING>);
-	    close(FPING);
-	}
-	
-	chomp(@fping_results);
+        my @fping_results;
+        my @fping_targets = keys %{$hostlist{unreachable}};
+        while (@fping_targets)
+        {
+            my @hosts = splice(@fping_targets, 0, 200);
+            open(FPING, '-|', "$fping @hosts");
+            push(@fping_results, <FPING>);
+            close(FPING);
+        }
+    
+        chomp(@fping_results);
         for my $result (@fping_results)
         {
-	    my ($host, $state) = ($result =~ /(\S+)\s+is\s+(\S+)/);
-	    if ($state =~ /unreachable/)
-	    {
-		$hostlist{unreachable}{$host} = $hostlist{reachable}{$host};
-		delete $hostlist{reachable}{$host};
-	    }
-	}
+            my ($host, $state) = ($result =~ /(\S+)\s+(.*)$/);
+            if ($state eq 'is alive')
+        {
+                $hostlist{reachable}{$host} = $hostlist{unreachable}{$host};
+                delete $hostlist{unreachable}{$host};
+            }
+        }
+    }
+    else
+    {
+        $hostlist{reachable} = $hostlist{unreachable};
+        delete $hostlist{unreachable};
     }
 
-    close(SYSLIST);
     return \%hostlist;
 }
 
@@ -404,8 +411,8 @@ sub check_ssh_keys
 
     unless ($? == 0)
     {
-	print STDERR "ERROR: No ssh keys loaded.\n";
-	return 0;
+        print STDERR "ERROR: No ssh keys loaded.\n";
+        return 0;
     }
     return 1;
 }
@@ -418,19 +425,19 @@ sub check_bash
 
     if ($? == 0)
     {
-	return 1;
+        return 1;
     }
     else
-    {	
+    {    
         usage();
         print STDERR "ERROR: Invalid bash syntax:\n";
         for (@test_syntax)
         {
             chomp;
             print STDERR "\t$_\n";
-	}
+        }
 
-	return 0;
+        return 0;
     }
 }
 
@@ -466,10 +473,10 @@ sub check_tools
 
         unless ($found == 1)
         {
-	    print STDERR "ERROR: Could not find required tool $tool. "
-			. "Make sure it is available in your PATH.\n";
-	    return 0;
-	}
+            print STDERR "ERROR: Could not find required tool $tool. "
+                  . "Make sure it is available in your PATH.\n";
+            return 0;
+        }
     }
     return 1;
 }
@@ -500,80 +507,86 @@ Usage: onall [<options>] <command>
 EOF
     if ($extended) 
     {
-	print STDERR (<<EOF);
+    print STDERR (<<EOF);
     -c, --copy <file> [<dest_path>]
-                Copy <file> to destination as <dest_path>. If not specified,
-                <dest_path> will be same as <file>.
+                Copy <file> to destination as <dest_path>. If not
+                specified, <dest_path> will be same as <file>.
                 
     -d, --delay
-                Delay N seconds between the fork of each ssh
-		child process.  Default is 0.
+                Delay N seconds between the fork of each ssh child
+                process.  Default is 0.
 
     -h, --help
-      		Extended help (this screen).
+                Extended help (this screen).
 
     -l, --linenums
-      		Append line numbers to command generated output.
-	
+                Append line numbers to command generated output.
+    
+    -n, --no_syntax_check
+                Skip the pre-flight syntax check of the command to run.
+                Useful for issuing commands to targets whose shell is
+                not bash.
+
     -o, --logpath
-                Output results to files named by the hostname
-                named by dir/hostname.
+                Output results to files named by the hostname named
+                by dir/hostname.
 
     -p, --ping
-      		Fping all hosts prior to attempting an
-		ssh connection.
+                Ping all hosts prior to attempting an ssh connection.
+                Requires fping(8).
 
     -q, --quiet
-       		Semi-quiet mode.  Supresses sanity check 
-		information and assumes YES to all prompts. 
+                Semi-quiet mode.  Supresses sanity check information
+                and assumes YES to all prompts.
 
     -r, --rate
-               	Run command on N machines in parallel.  This is 
-		the number of ssh connections open at a given time.
-		Default is 20.
+                Run command on N machines in parallel.  This is the number
+                of ssh connections open at a given time.  Default is 20.
 
     -e, --script <script> [<script_args>]
-      		Transfer/execute a script from the local system
-		to each target system.  In this mode the <command>
-		should be a path to a local script.  Any arguments
-		which follow will be passed to the remote script.
+                Transfer/execute a script from the local system to each
+                target system.  In this mode the <command> should be
+                a path to a local script.  Any arguments which follow
+                will be passed to the remote script.
 
     -A, --ssh_arguments
-		pass arguments directly to ssh
+                Pass arguments directly to SSH.
+
+    -k, --ssh_no_keys
+                Do not require an ssh agent or keys.  Use with care.
 
     -Q, --ssh_quiet
-		run ssh in quiet mode
+                Run SSH in quiet mode.
 
     -s, --suppress
-      		Supress hostnames and line numbers from being
-		prepended to result data.
+                Supress hostnames and line numbers from being prepended
+                to result data.
 
     -f, --syslist
-             	Path to system list file.  If unspecified, the
-		list will be read from STDIN.  Expected input
-		format is hostname/IP, followed by newline.
+                Path to system list file.  If unspecified, the list will
+                be read from STDIN.  Expected input format is hostname/IP,
+                followed by newline.
 
     -t, --timeout
-             	Timeout in seconds before child ssh processes
-		are killed.  Be careful with this arguement, as
-		all running/pending commands on the machine in
-		question will be terminated potentially leaving
-		the system in an unknown state.  Default is 300.
+                Timeout in seconds before child ssh processes are killed.
+                Be careful with this argument, as all running/pending
+                commands on the machine in question will be terminated
+                potentially leaving the system in an unknown state.
+                Default is 300.
 
     -b, --unbuffered
-      		Turn OFF output buffering of result data.  By
-		default, onall will display all output after 
-		remote command execution is complete, thereby 
-		maintaining proper order.  When buffering is
-		off, result data will be returned as each
-		line is received. 
+                Turn OFF output buffering of result data.  By default,
+                onall will display all output after remote command
+                execution is complete, thereby maintaining proper order.
+                When buffering is off, result data will be returned as
+                each line is received.
 
     -u, --user
-                Specifies the username ssh will use to log in 
-	        to remote systems.  Default is root.
+                Specifies the username ssh will use to log in to remote
+                systems.  Default is root.
 
     -y, --yes
-      		Assume YES for all prompts.
+              Assume YES for all prompts.
 
 
 Examples:
@@ -589,10 +602,12 @@ Examples:
   
 Notes:
 
-    Command syntax is expected to be written in bash.  Syntax will be verified
-    prior to forking any ssh children.  It is usually best to enclose the
-    command in 'single quotes', or insert shell escapes where nessessary. SSH 
-    keys must be loaded via ssh-agent/ssh-add prior to running onall.
+    Unless invoked with the -n switch, command syntax is expected
+    to be written in bash.    Syntax will be verified prior to forking
+    any ssh children.  It is usually best to enclose the command in
+    'single quotes', or insert shell escapes where nessessary.
+    Unless invoked with the -k switch, SSH keys must be loaded via
+    ssh-agent/ssh-add prior to running onall.
 
 EOF
     }
