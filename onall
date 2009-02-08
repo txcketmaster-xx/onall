@@ -154,8 +154,10 @@ exit_error("ERROR: Logpath $opt{logpath} is not a directory\n")
 
 my @tools_to_check = ($ssh, $ssh_add, $bash);
 push(@tools_to_check, $fping) if ($opt{ping});
-@tools_to_check = grep({ $_ ne $ssh_add } @tools_to_check) if ($opt{'ssh_no_keys'});
-@tools_to_check = grep({ $_ ne $bash } @tools_to_check) if ($opt{'no_syntax_check'});
+@tools_to_check = grep({ $_ ne $ssh_add } @tools_to_check)
+    if ($opt{'ssh_no_keys'});
+@tools_to_check = grep({ $_ ne $bash } @tools_to_check)
+    if ($opt{'no_syntax_check'});
 
 check_tools(\@tools_to_check) or exit 1;
 unless ($opt{'ssh_no_keys'}) {
