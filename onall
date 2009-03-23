@@ -89,6 +89,7 @@ Getopt::Long::GetOptions(
     'unbuffered|b',
     'user|u=s',
     'yes|y',
+    'printdots|x',
 ) or usage();
 
 $opt{rate} = $default{rate}
@@ -307,6 +308,9 @@ sub new_ssh_child
     }
 
     print @output unless exists $opt{unbuffered};
+    unless (exists $opt{quiet}) {
+        print "." if exists $opt{printdots};
+    }
     close(LOGFILE)
         if (exists $opt{logpath});
 
@@ -590,6 +594,8 @@ EOF
     -y, --yes
               Assume YES for all prompts.
 
+    -x, --printdots
+              Print a dot for each system to show progress.
 
 Examples:
 
