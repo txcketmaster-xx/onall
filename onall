@@ -75,14 +75,14 @@ Getopt::Long::GetOptions(
     'help|h',
     'linenums|l',
     'logpath|o=s',
-    'no_syntax_check|n',
+    'no-syntax-check|no_syntax_check|n',
     'ping|p',
     'quiet|q',
     'rate|r=s',
     'script|e=s',
-    'ssh_arguments|A=s',
-    'ssh_no_keys|k',
-    'ssh_quiet|Q',
+    'ssh-arguments|ssh_arguments|A=s',
+    'ssh-no-keys|ssh_no_keys|k',
+    'ssh-quiet|ssh_quiet|Q',
     'suppress|s=s',
     'syslist|f=s',
     'timeout|t=s',
@@ -111,12 +111,12 @@ our $ssh_args = "-l $opt{user} -xT "
                 . '-o "PasswordAuthentication no" ' 
                 . '-o "StrictHostKeyChecking no" ';
 
-if (exists $opt{ssh_quiet}) {
+if (exists $opt{'ssh-quiet'}) {
     $ssh_args .= '-q ';
 }
 
-if (exists $opt{ssh_arguments}) {
-    $ssh_args .= $opt{ssh_arguments};
+if (exists $opt{'ssh-arguments'}) {
+    $ssh_args .= $opt{'ssh-arguments'};
 }
 
 if ( exists $opt{script} )
@@ -156,15 +156,15 @@ exit_error("ERROR: Logpath $opt{logpath} is not a directory\n")
 my @tools_to_check = ($ssh, $ssh_add, $bash);
 push(@tools_to_check, $fping) if ($opt{ping});
 @tools_to_check = grep({ $_ ne $ssh_add } @tools_to_check)
-    if ($opt{'ssh_no_keys'});
+    if ($opt{'ssh-no-keys'});
 @tools_to_check = grep({ $_ ne $bash } @tools_to_check)
-    if ($opt{'no_syntax_check'});
+    if ($opt{'no-syntax-check'});
 
 check_tools(\@tools_to_check) or exit 1;
-unless ($opt{'ssh_no_keys'}) {
+unless ($opt{'ssh-no-keys'}) {
     check_ssh_keys() or exit 1;
 }
-unless ($opt{'no_syntax_check'}) {
+unless ($opt{'no-syntax-check'}) {
     check_bash($exec_cmd) or exit 1;
 }
 
@@ -528,7 +528,7 @@ EOF
     -l, --linenums
                 Append line numbers to command generated output.
     
-    -n, --no_syntax_check
+    -n, --no-syntax-check
                 Skip the pre-flight syntax check of the command to run.
                 Useful for issuing commands to targets whose shell is
                 not bash.
@@ -555,13 +555,13 @@ EOF
                 a path to a local script.  Any arguments which follow
                 will be passed to the remote script.
 
-    -A, --ssh_arguments
+    -A, --ssh-arguments
                 Pass arguments directly to SSH.
 
-    -k, --ssh_no_keys
+    -k, --ssh-no-keys
                 Do not require an ssh agent or keys.  Use with care.
 
-    -Q, --ssh_quiet
+    -Q, --ssh-quiet
                 Run SSH in quiet mode.
 
     -s, --suppress
