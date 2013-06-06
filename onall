@@ -105,7 +105,7 @@ $opt{syslist} = $default{syslist}
 delete $opt{linenums}
     if (exists $opt{suppress});
 
-if (exists $opt{help}) { usage('extended'); exit 1; }
+if (exists $opt{help}) { usage('extended'); exit 0; }
 
 our $ssh_args = "-l $opt{user} -xT " 
                 . '-o "PasswordAuthentication no" ' 
@@ -436,7 +436,7 @@ sub check_bash
     else
     {    
         usage();
-        print STDERR "ERROR: Invalid bash syntax:\n";
+        print STDOUT "ERROR: Invalid bash syntax:\n";
         for (@test_syntax)
         {
             chomp;
@@ -503,7 +503,7 @@ sub usage
     my $extended = shift;
     my $progname = basename($0);
 
-    print STDERR (<<EOF);
+    print STDOUT (<<EOF);
 
 onall v${version} -- A parallelized system-administration tool.
 Usage: onall [<options>] <command>
@@ -513,7 +513,7 @@ Usage: onall [<options>] <command>
 EOF
     if ($extended) 
     {
-    print STDERR (<<EOF);
+    print STDOUT (<<EOF);
     -c, --copy <file> [<dest_path>]
                 Copy <file> to destination as <dest_path>. If not
                 specified, <dest_path> will be same as <file>.
