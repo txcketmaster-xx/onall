@@ -83,7 +83,7 @@ Getopt::Long::GetOptions(
     'ssh-arguments|ssh_arguments|A=s',
     'ssh-no-keys|ssh_no_keys|k',
     'ssh-quiet|ssh_quiet|Q',
-    'suppress|s=s',
+    'suppress|s',
     'syslist|f=s',
     'timeout|t=s',
     'unbuffered|b',
