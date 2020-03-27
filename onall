@@ -80,6 +80,7 @@ Getopt::Long::GetOptions(
     'quiet|q',
     'rate|r=s',
     'script|e=s',
+    'ssh|S=s',
     'ssh-arguments|ssh_arguments|A=s',
     'ssh-no-keys|ssh_no_keys|k',
     'ssh-quiet|ssh_quiet|Q',
@@ -110,6 +111,11 @@ if (exists $opt{help}) { usage('extended'); exit 1; }
 our $ssh_args = "-l $opt{user} -xT " 
                 . '-o "PasswordAuthentication no" ' 
                 . '-o "StrictHostKeyChecking no" ';
+
+
+if (exists $opt{ssh}) {
+    $ssh = $opt{ssh};
+}
 
 if (exists $opt{'ssh-quiet'}) {
     $ssh_args .= '-q ';
@@ -277,6 +283,7 @@ sub new_ssh_child
         if (exists $opt{script});
     $ssh = "cat $opt{copy} | " . $ssh
         if (exists $opt{copy});
+    my $cmd = "$ssh $ssh_args $machine";
     @pids = open(SSH, "$ssh $ssh_args $machine \'($exec_cmd) 2>&1\' 2>&1 |")
         or die "Cannot fork ssh: $!";
 
@@ -467,6 +474,7 @@ sub check_tools
 
     for my $tool (@$tools)
     {
+        next if $tool =~ /^\//;
         my $found = 0;
         for my $dir (@path)
         {
@@ -554,6 +562,9 @@ EOF
                 target system.  In this mode the <command> should be
                 a path to a local script.  Any arguments which follow
                 will be passed to the remote script.
+
+    -S, --ssh <path>
+                Use this as SSH.
 
     -A, --ssh-arguments
                 Pass arguments directly to SSH.
