@@ -25,7 +25,7 @@
 #
 #  onall v2.11 -- A parallelized system-administration tool.
 #    Written by Rafi Khardalian.
-# 
+#
 #  Usage: onall [OPTIONS] <command>
 #      onall [OPTIONS] --script <script> [<script_args>]
 #      onall [OPTIONS] --copy <file> <dest_path>
@@ -108,8 +108,8 @@ delete $opt{linenums}
 
 if (exists $opt{help}) { usage('extended'); exit 1; }
 
-our $ssh_args = "-l $opt{user} -xT " 
-                . '-o "PasswordAuthentication no" ' 
+our $ssh_args = "-l $opt{user} -xT "
+                . '-o "PasswordAuthentication no" '
                 . '-o "StrictHostKeyChecking no" ';
 
 
@@ -133,8 +133,8 @@ if ( exists $opt{script} )
     unless (-f $opt{script});
 
     $exec_cmd = 'TMPFILE="/tmp/onall_script.$$" ; cat - >$TMPFILE ; '
-                . 'chmod +x $TMPFILE && $TMPFILE ' 
-                . $opt{script_args} . '; rm $TMPFILE'; 
+                . 'chmod +x $TMPFILE && $TMPFILE '
+                . $opt{script_args} . '; rm $TMPFILE';
 }
 elsif ( exists $opt{copy} )
 {
@@ -193,7 +193,7 @@ unless (exists $opt{quiet})
         print_list(sort values %{$hostlist->{unreachable}});
     }
 
- 
+
     print STDERR "\nThe following command will be executed:\n\t";
     if (exists $opt{script}) {
         print STDERR "Script: $opt{script}\n";
@@ -203,7 +203,7 @@ unless (exists $opt{quiet})
         print STDERR $exec_cmd, "\n";
     }
 
-    if (not exists $opt{yes}) 
+    if (not exists $opt{yes})
     {
         my $term = new Term::ReadLine '';
         my $prompt = '';
@@ -228,20 +228,20 @@ for my $machine (sort keys %{$hostlist->{reachable}})
 {
     chomp $machine;
 
-    while ($children >= $opt{rate}) 
+    while ($children >= $opt{rate})
     {
         &reaper;
         select(undef, undef, undef, 0.25);
     }
 
-    $children++;    
+    $children++;
 
-    defined(my $pid = fork) or 
+    defined(my $pid = fork) or
         die "Cannot fork: $!";
 
     $children{$pid} = 1;
 
-    if (not $pid) 
+    if (not $pid)
     {
         new_ssh_child($machine);
     }
@@ -268,14 +268,14 @@ sub new_ssh_child
 
     $hostname = $hostlist->{reachable}->{$machine};
 
-    $SIG{ALRM} = sub 
-    { 
+    $SIG{ALRM} = sub
+    {
         print STDERR "$hostname: Timeout exceeded \[$opt{timeout}\] -- ";
         print STDERR 'killing \(' . join(' ', @pids) . "\).\n";
 
         for (@pids) { kill KILL => $_; }
         sleep $opt{delay};
-        exit; 
+        exit;
     };
 
     alarm($opt{timeout});
@@ -329,13 +329,13 @@ sub new_ssh_child
 }
 
 
-sub reaper 
+sub reaper
 {
     my $pid;
     $SIG{CHLD} = sub { \&reaper };
     $pid = waitpid(-1, &WNOHANG);
 
-    if (WIFEXITED($?)) 
+    if (WIFEXITED($?))
     {
         $children--;
         delete $children{$pid};
@@ -345,7 +345,7 @@ sub reaper
 
 sub resolve_address
 {
-    my $address = shift; 
+    my $address = shift;
     my $hostname = gethostbyaddr(inet_aton($address), AF_INET);
 
     return $hostname if ($hostname) ;
@@ -358,7 +358,7 @@ sub build_hostlist
     my $syslist = shift;
     my %hostlist;
 
-    open(SYSLIST, "<$opt{syslist}") 
+    open(SYSLIST, "<$opt{syslist}")
         or die "Cannot open syslist: $!";
 
     foreach my $line (<SYSLIST>)
@@ -396,7 +396,7 @@ sub build_hostlist
             push(@fping_results, <FPING>);
             close(FPING);
         }
-    
+
         chomp(@fping_results);
         for my $result (@fping_results)
         {
@@ -441,7 +441,7 @@ sub check_bash
         return 1;
     }
     else
-    {    
+    {
         usage();
         print STDERR "ERROR: Invalid bash syntax:\n";
         for (@test_syntax)
@@ -519,14 +519,14 @@ Usage: onall [<options>] <command>
        onall [<options>] --copy <file> <dest_path>
 
 EOF
-    if ($extended) 
+    if ($extended)
     {
     print STDERR (<<EOF);
     -c, --copy <file> [<dest_path>]
                 Copy <file> to destination as <dest_path>. If not
                 specified, <dest_path> will be same as <file>.
-                
-    -d, --delay
+
+    -d, --delay <seconds>
                 Delay N seconds between the fork of each ssh child
                 process.  Default is 0.
 
@@ -535,13 +535,13 @@ EOF
 
     -l, --linenums
                 Append line numbers to command generated output.
-    
+
     -n, --no-syntax-check
                 Skip the pre-flight syntax check of the command to run.
                 Useful for issuing commands to targets whose shell is
                 not bash.
 
-    -o, --logpath
+    -o, --logpath <path>
                 Output results to files named by the hostname named
                 by dir/hostname.
 
@@ -553,20 +553,19 @@ EOF
                 Semi-quiet mode.  Supresses sanity check information
                 and assumes YES to all prompts.
 
-    -r, --rate
+    -r, --rate <rate>
                 Run command on N machines in parallel.  This is the number
                 of ssh connections open at a given time.  Default is 20.
 
     -e, --script <script> [<script_args>]
                 Transfer/execute a script from the local system to each
-                target system.  In this mode the <command> should be
-                a path to a local script.  Any arguments which follow
-                will be passed to the remote script.
+                target system. <script> should be a path to a local script.
+                Any arguments to the script can be passed as arguments to onall.
 
     -S, --ssh <path>
                 Use this as SSH.
 
-    -A, --ssh-arguments
+    -A, --ssh-arguments <args>
                 Pass arguments directly to SSH.
 
     -k, --ssh-no-keys
@@ -618,7 +617,7 @@ Examples:
         | onall -e ~user/scripts/do_stuff --now
     <tool that generates list of hosts based on options> | \
         | onall -c ~bin/coolutil /usr/bin/coolutil
-  
+
 Notes:
 
     Unless invoked with the -n switch, command syntax is expected
@@ -631,4 +630,3 @@ Notes:
 EOF
     }
 }
-
